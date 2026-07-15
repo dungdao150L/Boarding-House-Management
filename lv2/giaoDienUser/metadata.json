@@ -1,6 +1,0 @@
-{
-  "name": "LuxLiving",
-  "description": "Premium Resident Portal with Dashboard, Invoices, Maintenance Request, Room & Contract Details, and QR Code Payment.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

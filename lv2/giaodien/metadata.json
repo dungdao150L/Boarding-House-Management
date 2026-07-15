@@ -1,6 +1,0 @@
-{
-  "name": "LUMI Residence",
-  "description": "Hệ thống quản lý vận hành chung cư mini và căn hộ dịch vụ cao cấp LUMI Residence.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
