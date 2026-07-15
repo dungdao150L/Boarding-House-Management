@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: auth-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["auth-service:3001"]
+
+  - job_name: room-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["room-service:3002"]
+
+  - job_name: billing-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["billing-service:3005"]
+
+  - job_name: billing-calculator
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["billing-calculator:8000"]
+
+  - job_name: report-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["report-service:3003"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
