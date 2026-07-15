@@ -1,7 +1,0 @@
-node_modules/
-.npm-cache/
-coverage/
-data/*.sqlite
-data/*.db
-.env
-npm-debug.log*
