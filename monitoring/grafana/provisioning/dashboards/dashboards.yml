@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: Boarding House Dashboards
+    orgId: 1
+    folder: SPQM Level 3
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards
