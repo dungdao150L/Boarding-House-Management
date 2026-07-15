@@ -1,8 +1,11 @@
 const express = require('express');
 
 const tenantController = require('../controllers/tenantController');
+const { authenticate, authorize } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
+
+router.use(authenticate, authorize('admin', 'staff'));
 
 router.post('/', tenantController.createTenant);
 router.get('/', tenantController.listTenants);

@@ -1,7 +1,14 @@
 node_modules/
 .npm-cache/
 coverage/
+dist/
+.codegraph/
+.pytest_cache/
+__pycache__/
 data/*.sqlite
 data/*.db
 .env
+.tmp-*.log
 npm-debug.log*
+giaodien/dist/
+giaodien/node_modules/
