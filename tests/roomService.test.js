@@ -1,5 +1,4 @@
 const roomService = require('../src/services/roomService');
-const { run } = require('../src/models/database');
 const { closeTestDb, createTestDb } = require('./helpers/testDb');
 
 describe('roomService', () => {
@@ -71,25 +70,5 @@ describe('roomService', () => {
       price: 2300000,
       status: 'invalid',
     })).rejects.toThrow('status must be one of');
-  });
-
-  test('tenant creates a rental request for an available room', async () => {
-    const room = await roomService.createRoom(db, {
-      name: 'A106',
-      price: 2600000,
-    });
-    const user = await run(
-      db,
-      'INSERT INTO users (username, password_hash, role, full_name) VALUES (?, ?, ?, ?)',
-      ['tenant_request', 'hash', 'tenant', 'Tenant Request'],
-    );
-
-    const availableRooms = await roomService.listAvailableRooms(db);
-    const request = await roomService.createRentalRequest(db, { id: user.id, role: 'tenant' }, { roomId: room.id });
-    const updatedRequest = await roomService.updateRentalRequestStatus(db, request.id, { status: 'rejected' });
-
-    expect(availableRooms.map((item) => item.id)).toContain(room.id);
-    expect(request.status).toBe('pending');
-    expect(updatedRequest.status).toBe('rejected');
   });
 });

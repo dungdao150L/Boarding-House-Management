@@ -1,5 +1,4 @@
 const AppError = require('../utils/AppError');
-const { deleteCache } = require('../config/cache');
 const { all, get, run } = require('../models/database');
 const { getRoomById, updateRoom } = require('./roomService');
 const { getTenantById } = require('./tenantService');
@@ -18,14 +17,12 @@ function mapContract(row) {
     tenantId: row.tenant_id,
     startDate: row.start_date,
     endDate: row.end_date,
-    monthlyRent: Number(row.monthly_rent || 0),
-    deposit: Number(row.deposit_amount || 0),
+    monthlyRent: row.monthly_rent,
     room_id: undefined,
     tenant_id: undefined,
     start_date: undefined,
     end_date: undefined,
     monthly_rent: undefined,
-    deposit_amount: undefined,
   };
 }
 
@@ -73,7 +70,7 @@ async function createContract(db, payload) {
   const result = await run(
     db,
     `
-      INSERT INTO contracts (room_id, tenant_id, start_date, end_date, deposit_amount, monthly_rent, status)
+      INSERT INTO contracts (room_id, tenant_id, start_date, end_date, deposit, monthly_rent, status)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
     [
@@ -88,7 +85,6 @@ async function createContract(db, payload) {
   );
 
   await updateRoom(db, payload.roomId, { status: 'rented' });
-  await deleteCache('report:*');
   return getContractById(db, result.id);
 }
 
@@ -96,7 +92,7 @@ async function listContracts(db) {
   const rows = await all(
     db,
     `
-      SELECT contracts.*, rooms.room_number AS room_name, tenants.full_name AS tenant_name
+      SELECT contracts.*, rooms.name AS room_name, tenants.full_name AS tenant_name
       FROM contracts
       JOIN rooms ON rooms.id = contracts.room_id
       JOIN tenants ON tenants.id = contracts.tenant_id
@@ -112,7 +108,7 @@ async function getContractById(db, id) {
   const contract = await get(
     db,
     `
-      SELECT contracts.*, rooms.room_number AS room_name, tenants.full_name AS tenant_name
+      SELECT contracts.*, rooms.name AS room_name, tenants.full_name AS tenant_name
       FROM contracts
       JOIN rooms ON rooms.id = contracts.room_id
       JOIN tenants ON tenants.id = contracts.tenant_id
@@ -138,7 +134,7 @@ async function updateContract(db, id, payload) {
   }
 
   const fieldMap = {
-    deposit: 'deposit_amount',
+    deposit: 'deposit',
     endDate: 'end_date',
     monthlyRent: 'monthly_rent',
     startDate: 'start_date',
@@ -171,7 +167,7 @@ async function endContract(db, id) {
     `
       UPDATE contracts
       SET status = 'ended',
-          end_date = COALESCE(end_date, CURRENT_DATE),
+          end_date = COALESCE(end_date, DATE('now')),
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `,
@@ -179,7 +175,6 @@ async function endContract(db, id) {
   );
 
   await updateRoom(db, contract.roomId, { status: 'available' });
-  await deleteCache('report:*');
   return getContractById(db, contractId);
 }
 

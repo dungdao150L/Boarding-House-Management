@@ -1,245 +1,312 @@
-# Quản lý phòng trọ - SPQM Level 3
+# Quản lý phòng trọ - SPQM Level 1
 
-Mini project môn **Software Process and Quality Management**. Level 3 nâng hệ thống từ kiến trúc Level 2 lên microservices, có Redis cache, Prometheus/Grafana monitoring, k6 load test, Quality Gate tự động và báo cáo cải tiến dựa trên số liệu.
+Mini project môn **Software Process and Quality Management** với đề tài quản lý phòng trọ ở **Level 1 - Nền tảng**.
 
-## Kiến trúc microservices
+## Mô tả hệ thống
 
-```mermaid
-flowchart LR
-  Client["Client / k6"] --> Auth["Auth Service :3001"]
-  Client --> Room["Room Service :3002"]
-  Client --> Billing["Billing Service :3005"]
-  Client --> Report["Report Service :3003"]
-  Billing --> Calculator["Billing Calculator FastAPI :8000"]
-  Auth --> MySQL["MySQL / XAMPP"]
-  Room --> MySQL
-  Billing --> MySQL
-  Report --> MySQL
-  Room --> Redis["Redis Cache"]
-  Billing --> Redis
-  Report --> Redis
-  Prom["Prometheus :9090"] --> Auth
-  Prom --> Room
-  Prom --> Billing
-  Prom --> Calculator
-  Prom --> Report
-  Grafana["Grafana :3004"] --> Prom
+Hệ thống cung cấp REST API để quản lý phòng trọ, người thuê, hợp đồng thuê phòng và hóa đơn tháng. Mục tiêu là tạo một sản phẩm nhỏ nhưng có quy trình phát triển cơ bản: tách lớp, kiểm thử đơn vị, kiểm tra chất lượng code, CI và tài liệu quy trình.
+
+## Công nghệ sử dụng
+
+- Backend: Node.js, Express
+- Database: SQLite
+- Unit test: Jest
+- API test: Supertest
+- Code quality: ESLint
+- CI: GitHub Actions
+
+## Cấu trúc project
+
+```text
+.
+├── .github/workflows/ci.yml
+├── docs/spqm-level-1.md
+├── src
+│   ├── app.js
+│   ├── server.js
+│   ├── controllers
+│   ├── middlewares
+│   ├── models
+│   │   └── database.js
+│   ├── routes
+│   ├── services
+│   └── utils
+├── tests
+│   ├── helpers
+│   ├── app.test.js
+│   ├── contractService.test.js
+│   ├── invoiceService.test.js
+│   └── roomService.test.js
+├── package.json
+└── README.md
 ```
 
-Service chính:
+## Database schema SQLite
 
-| Service | Port | Trách nhiệm |
+### rooms
+
+| Field | Type | Ghi chú |
 | --- | --- | --- |
-| Auth Service | 3001 | Đăng ký, đăng nhập, JWT, user/role |
-| Room Service | 3002 | Phòng, người thuê, hợp đồng, trạng thái phòng |
-| Billing Service | 3005 | Hóa đơn, thanh toán, gọi billing calculator |
-| Billing Calculator | 8000 | FastAPI tính tiền điện/nước/dịch vụ |
-| Report Service | 3003 | Doanh thu tháng, hóa đơn chưa thanh toán, tỉ lệ phòng |
-| Frontend UI | 5173 | Giao diện React/Vite quản lý phòng trọ |
-| Redis | 6379 | Cache API đọc nhiều |
-| Prometheus | 9090 | Thu thập metrics |
-| Grafana | 3004 | Dashboard quan sát |
-| SonarQube | 9000 | Quality analysis |
+| id | INTEGER | Primary key |
+| name | TEXT | Tên phòng, duy nhất |
+| floor | INTEGER | Tầng |
+| area | REAL | Diện tích |
+| price | INTEGER | Giá thuê tháng |
+| status | TEXT | `available`, `rented`, `maintenance` |
+| description | TEXT | Ghi chú |
 
-## Database MySQL / XAMPP
+Ánh xạ trạng thái phòng:
 
-Backend Node.js hien da chuyen sang MySQL va dung schema trong file:
+- `available`: trống
+- `rented`: đã thuê
+- `maintenance`: bảo trì
 
-```text
-quan_ly_phong_tro_xampp_mysql.sql
-```
+### tenants
 
-Thong tin ket noi mac dinh trong `.env`:
+| Field | Type | Ghi chú |
+| --- | --- | --- |
+| id | INTEGER | Primary key |
+| full_name | TEXT | Họ tên |
+| phone | TEXT | Số điện thoại |
+| email | TEXT | Email |
+| identity_number | TEXT | CCCD/CMND |
+| address | TEXT | Địa chỉ |
 
-```text
-DB_HOST=localhost
-DB_PORT=3306
-DB_NAME=quan_ly_phong_tro
-DB_USER=root
-DB_PASSWORD=
-```
+### contracts
 
-Neu MySQL XAMPP cua ban co mat khau, cap nhat lai `DB_PASSWORD`.
-Co the import file SQL bang phpMyAdmin, sau do chay `npm run seed` de dam bao tai khoan `admin / Admin@123` co password hash dung.
+| Field | Type | Ghi chú |
+| --- | --- | --- |
+| id | INTEGER | Primary key |
+| room_id | INTEGER | Foreign key đến rooms |
+| tenant_id | INTEGER | Foreign key đến tenants |
+| start_date | TEXT | Ngày bắt đầu |
+| end_date | TEXT | Ngày kết thúc |
+| deposit | INTEGER | Tiền cọc |
+| monthly_rent | INTEGER | Tiền thuê tháng |
+| status | TEXT | `active`, `ended` |
 
-## Redis cache
+### invoices
 
-Các dữ liệu được cache:
+| Field | Type | Ghi chú |
+| --- | --- | --- |
+| id | INTEGER | Primary key |
+| contract_id | INTEGER | Foreign key đến contracts |
+| month | TEXT | Tháng, định dạng `YYYY-MM` |
+| room_fee | INTEGER | Tiền phòng |
+| electricity_fee | INTEGER | Tiền điện |
+| water_fee | INTEGER | Tiền nước |
+| service_fee | INTEGER | Tiền dịch vụ |
+| total_amount | INTEGER | Tổng tiền |
+| payment_status | TEXT | `unpaid`, `paid` |
 
-- `rooms:list`: danh sách phòng.
-- `report:revenue:<month>`: doanh thu tháng.
-- `report:unpaid-invoices`: hóa đơn chưa thanh toán.
-- `report:room-occupancy`: tỉ lệ phòng trống/đã thuê/bảo trì.
-
-Cache được xóa khi tạo/cập nhật/xóa phòng, tạo/kết thúc hợp đồng, tạo/cập nhật/thanh toán hóa đơn.
-
-## Chạy bằng Docker Compose
-
-```bash
-docker compose up --build
-```
-
-Sau khi chạy:
-
-- Auth: `http://localhost:3001`
-- Room: `http://localhost:3002`
-- Billing: `http://localhost:3005`
-- Billing Calculator: `http://localhost:8000`
-- Report: `http://localhost:3003`
-- Frontend UI: `http://localhost:5173`
-- Prometheus: `http://localhost:9090`
-- Grafana: `http://localhost:3004` với `admin/admin`
-- SonarQube: `http://localhost:9000`
-
-Seed admin:
-
-```text
-username: admin
-password: Admin@123
-```
-
-Frontend UI đã được nối với backend thật qua các biến môi trường Vite:
-
-```text
-VITE_AUTH_API_URL=http://localhost:3001
-VITE_ROOM_API_URL=http://localhost:3002
-VITE_BILLING_API_URL=http://localhost:3005
-VITE_REPORT_API_URL=http://localhost:3003
-```
-
-Khi mở `http://localhost:5173`, đăng nhập bằng tài khoản seed `admin / Admin@123`. Giao diện sẽ gọi API thật, lưu JWT và tải dữ liệu phòng, người thuê, hợp đồng, hóa đơn từ MySQL thông qua các service backend.
-
-## Chạy test
+## Cài đặt
 
 ```bash
 npm install
+```
+
+## Chạy project
+
+```bash
+npm start
+```
+
+Server mặc định chạy tại:
+
+```text
+http://localhost:3000
+```
+
+Kiểm tra health check:
+
+```text
+GET /health
+```
+
+## Chạy kiểm tra chất lượng và test
+
+```bash
 npm run lint
-npm run test:unit
-npm run test:integration
 npm test
-npm run frontend:lint
-npm run frontend:build
 ```
 
-Kết quả kiểm tra hiện tại:
+Coverage tối thiểu được cấu hình trong `package.json` là 70% cho statements, branches, functions và lines.
+
+## Chuẩn JSON response
+
+Thành công:
+
+```json
+{
+  "success": true,
+  "message": "Room created",
+  "data": {}
+}
+```
+
+Thất bại:
+
+```json
+{
+  "success": false,
+  "message": "Missing required fields",
+  "details": {
+    "fields": ["price"]
+  }
+}
+```
+
+## Danh sách API
+
+### Rooms
+
+| Method | Endpoint | Mô tả |
+| --- | --- | --- |
+| POST | `/api/rooms` | Thêm phòng |
+| GET | `/api/rooms` | Xem danh sách phòng |
+| GET | `/api/rooms/:id` | Xem chi tiết phòng |
+| PUT | `/api/rooms/:id` | Cập nhật phòng |
+| DELETE | `/api/rooms/:id` | Xóa phòng |
+
+Body tạo phòng:
+
+```json
+{
+  "name": "A101",
+  "floor": 1,
+  "area": 20,
+  "price": 2500000,
+  "status": "available",
+  "description": "Phòng có ban công"
+}
+```
+
+### Tenants
+
+| Method | Endpoint | Mô tả |
+| --- | --- | --- |
+| POST | `/api/tenants` | Thêm người thuê |
+| GET | `/api/tenants` | Xem danh sách người thuê |
+| GET | `/api/tenants/:id` | Xem chi tiết người thuê |
+| PUT | `/api/tenants/:id` | Cập nhật người thuê |
+| DELETE | `/api/tenants/:id` | Xóa người thuê |
+
+Body tạo người thuê:
+
+```json
+{
+  "fullName": "Nguyen Van A",
+  "phone": "0909000001",
+  "email": "a@example.com",
+  "identityNumber": "012345678901",
+  "address": "TP.HCM"
+}
+```
+
+### Contracts
+
+| Method | Endpoint | Mô tả |
+| --- | --- | --- |
+| POST | `/api/contracts` | Tạo hợp đồng |
+| GET | `/api/contracts` | Xem danh sách hợp đồng |
+| GET | `/api/contracts/:id` | Xem chi tiết hợp đồng |
+| PUT | `/api/contracts/:id` | Cập nhật hợp đồng |
+| PATCH | `/api/contracts/:id/end` | Kết thúc hợp đồng |
+
+Body tạo hợp đồng:
+
+```json
+{
+  "roomId": 1,
+  "tenantId": 1,
+  "startDate": "2026-07-01",
+  "endDate": "2027-07-01",
+  "deposit": 2500000,
+  "monthlyRent": 2500000
+}
+```
+
+### Invoices
+
+| Method | Endpoint | Mô tả |
+| --- | --- | --- |
+| POST | `/api/invoices` | Tạo hóa đơn tháng |
+| GET | `/api/invoices` | Xem danh sách hóa đơn |
+| GET | `/api/invoices/:id` | Xem chi tiết hóa đơn |
+| PUT | `/api/invoices/:id` | Cập nhật hóa đơn |
+| PATCH | `/api/invoices/:id/payment-status` | Cập nhật trạng thái thanh toán |
+
+Body tạo hóa đơn:
+
+```json
+{
+  "contractId": 1,
+  "month": "2026-07",
+  "roomFee": 2500000,
+  "electricityFee": 300000,
+  "waterFee": 100000,
+  "serviceFee": 150000
+}
+```
+
+Body cập nhật thanh toán:
+
+```json
+{
+  "paymentStatus": "paid"
+}
+```
+
+## SDLC của nhóm
+
+```mermaid
+flowchart LR
+  A["Requirement"] --> B["Planning"]
+  B --> C["Design"]
+  C --> D["Implementation"]
+  D --> E["Testing"]
+  E --> F["Review"]
+  F --> G["Release"]
+  G --> H["Retrospective"]
+  H --> B
+```
+
+## Definition of Done
+
+- Chức năng có API hoạt động đúng phạm vi Level 1.
+- Logic nghiệp vụ nằm trong service, không viết trực tiếp trong route.
+- Có validation dữ liệu đầu vào cơ bản.
+- API trả về JSON thống nhất.
+- Có unit test cho service chính.
+- `npm run lint` pass.
+- `npm test` pass và coverage đạt tối thiểu 70%.
+- README và tài liệu SPQM được cập nhật.
+- Code được commit theo convention.
+
+## Commit convention
+
+Sử dụng Conventional Commits:
 
 ```text
-35 tests passed
-Statements 93.76%
-Branches 80.33%
-Functions 96.39%
-Lines 93.63%
+feat: add room management api
+fix: validate invoice month format
+test: add contract service unit tests
+docs: update spqm report
+ci: add github actions workflow
+refactor: separate service logic from controllers
 ```
 
-## Chạy k6 load test
+## Coverage
 
-Cần hệ thống Docker Compose đang chạy và có dữ liệu hợp đồng mẫu.
+Mục tiêu baseline: tối thiểu 70%. Dự án cấu hình Jest để fail pipeline nếu coverage toàn cục dưới:
 
-```bash
-k6 run load-tests/boarding-house.js
-```
+- Statements: 70%
+- Branches: 70%
+- Functions: 70%
+- Lines: 70%
 
-Có thể truyền biến môi trường:
-
-```bash
-k6 run ^
-  -e AUTH_URL=http://localhost:3001 ^
-  -e ROOM_URL=http://localhost:3002 ^
-  -e BILLING_URL=http://localhost:3005 ^
-  -e REPORT_URL=http://localhost:3003 ^
-  -e CONTRACT_ID=1 ^
-  load-tests/boarding-house.js
-```
-
-Chỉ số k6 cần ghi vào báo cáo:
-
-- Average response time.
-- p95 response time.
-- Requests per second.
-- Error rate.
-- So sánh trước/sau bật Redis.
-
-## Prometheus
-
-Mỗi service expose:
+Xem báo cáo HTML sau khi chạy test tại:
 
 ```text
-/metrics
+coverage/lcov-report/index.html
 ```
-
-Prometheus scrape config: [monitoring/prometheus.yml](/E:/doAn/monitoring/prometheus.yml)
-
-Mở Prometheus:
-
-```text
-http://localhost:9090
-```
-
-Query mẫu:
-
-```promql
-sum(rate(boarding_http_requests_total[5m])) by (service)
-histogram_quantile(0.95, sum(rate(boarding_http_request_duration_seconds_bucket[5m])) by (le, service))
-sum(rate(boarding_http_requests_total{status_code=~"5.."}[5m])) / sum(rate(boarding_http_requests_total[5m]))
-```
-
-## Grafana
-
-Dashboard được provision tự động:
-
-[monitoring/grafana/dashboards/boarding-house-overview.json](/E:/doAn/monitoring/grafana/dashboards/boarding-house-overview.json)
-
-Mở Grafana:
-
-```text
-http://localhost:3004
-```
-
-Theo dõi:
-
-- Requests per second.
-- p95 response time.
-- Error rate.
-- Trạng thái service qua target Prometheus.
-
-## Quality Gate
-
-CI fail nếu:
-
-- ESLint fail.
-- Unit test fail.
-- Integration test fail.
-- Coverage dưới 80%.
-- SonarQube Quality Gate fail khi repo có `SONAR_TOKEN` và `SONAR_HOST_URL`.
-
-CI config: [.github/workflows/ci.yml](/E:/doAn/.github/workflows/ci.yml)
-
-Sonar config: [sonar-project.properties](/E:/doAn/sonar-project.properties)
-
-## Chỉ số Level 3
-
-SLO đề xuất:
-
-- 95% request có response time dưới 500ms.
-- Error rate dưới 1%.
-- CI pass rate trên 90%.
-- p95 API đọc có cache dưới 300ms.
-
-DORA metrics cần thu thập:
-
-- Deployment frequency.
-- Lead time for changes.
-- Change failure rate.
-- Mean time to recovery.
-
-## Link video demo
-
-Thêm link video demo sau khi quay:
-
-```text
-https://example.com/spqm-level-3-demo
-```
-
-## Báo cáo SPQM Level 3
-
-Xem: [docs/spqm-level-3.md](/E:/doAn/docs/spqm-level-3.md)
