@@ -16,7 +16,18 @@ function errorHandler(error, req, res, next) {
     return;
   }
 
-  if (error.code === 'SQLITE_CONSTRAINT') {
+  const constraintErrors = [
+    'SQLITE_CONSTRAINT',
+    '23505',
+    '23503',
+    '23514',
+    'ER_DUP_ENTRY',
+    'ER_NO_REFERENCED_ROW_2',
+    'ER_ROW_IS_REFERENCED_2',
+    'ER_CHECK_CONSTRAINT_VIOLATED',
+  ];
+
+  if (constraintErrors.includes(error.code)) {
     fail(res, 'Database constraint violation', 400, { reason: error.message });
     return;
   }

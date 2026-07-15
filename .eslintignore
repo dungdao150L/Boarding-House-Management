@@ -1,0 +1,9 @@
+Lv1/
+coverage/
+node_modules/
+.npm-cache/
+billing-service/
+load-tests/
+monitoring/
+giaodien/dist/
+giaodien/node_modules/

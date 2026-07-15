@@ -1,8 +1,11 @@
 const express = require('express');
 
 const contractController = require('../controllers/contractController');
+const { authenticate, authorize } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
+
+router.use(authenticate, authorize('admin'));
 
 router.post('/', contractController.createContract);
 router.get('/', contractController.listContracts);

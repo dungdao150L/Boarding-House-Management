@@ -1,0 +1,10 @@
+node_modules
+giaodien/node_modules
+giaodien/dist
+.npm-cache
+coverage
+data
+.git
+Lv1
+npm-debug.log*
+.env

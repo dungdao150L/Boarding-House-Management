@@ -25,13 +25,16 @@ function mapTenant(row) {
 async function createTenant(db, payload) {
   validateTenantPayload(payload);
 
+  const supportsReturning = db.__dialect === 'postgres-test';
   const result = await run(
     db,
     `
-      INSERT INTO tenants (full_name, phone, email, identity_number, address)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO tenants (user_id, full_name, phone, email, identity_number, address)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ${supportsReturning ? 'RETURNING id' : ''}
     `,
     [
+      payload.userId ?? null,
       payload.fullName,
       payload.phone,
       payload.email ?? null,
