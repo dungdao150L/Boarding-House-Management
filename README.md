@@ -1,342 +1,245 @@
-# Boarding House Management
+# Quản lý phòng trọ - SPQM Level 3
 
-Mini project mon **Software Process and Quality Management** voi de tai **Quan ly phong tro**. He thong ho tro quan ly phong tro/chung cu mini theo 3 level: REST API nen tang, mo rong auth/CI/chat luong, va nang cao theo huong microservices/monitoring.
+Mini project môn **Software Process and Quality Management**. Level 3 nâng hệ thống từ kiến trúc Level 2 lên microservices, có Redis cache, Prometheus/Grafana monitoring, k6 load test, Quality Gate tự động và báo cáo cải tiến dựa trên số liệu.
 
-Repository: `https://github.com/dungdao150L/Boarding-House-Management`
+## Kiến trúc microservices
 
-## Cong nghe
-
-- Backend: Node.js, Express
-- Frontend: React, Vite, TypeScript
-- Database: MySQL, dung tot voi XAMPP
-- Auth: JWT, phan quyen `admin`, `staff`, `tenant`
-- Testing: Jest, Supertest
-- Quality: ESLint, SonarQube config
-- Service phu: Python FastAPI billing service
-- Level 3: Redis, k6, Prometheus, Grafana, Docker Compose
-
-## Chuc nang chinh
-
-- Dang ky, dang nhap, xac thuc JWT
-- Quan ly phong: them, xem, sua, xoa, trang thai phong
-- Quan ly nguoi thue
-- Quan ly hop dong thue phong
-- Quan ly dien nuoc va hoa don
-- Nguoi thue gui yeu cau chon phong
-- Admin phe duyet yeu cau thue phong
-- Nguoi thue xem phong, hop dong, hoa don cua minh
-- Bao cao doanh thu, phong trong, hoa don chua thanh toan
-
-## Cau truc thu muc
-
-```text
-.
-+-- src/                         # Backend Node.js
-|   +-- controllers/
-|   +-- middlewares/
-|   +-- microservices/
-|   +-- models/
-|   +-- routes/
-|   +-- services/
-|   +-- utils/
-+-- giaodien/                    # Frontend React/Vite
-+-- billing-service/             # FastAPI billing calculator
-+-- tests/                       # Jest + Supertest
-+-- docs/                        # Tai lieu SPQM level 1-3
-+-- migrations/                  # Script/schema database
-+-- monitoring/                  # Prometheus/Grafana
-+-- load-tests/                  # k6 scripts
-+-- Lv1/                         # Ban Level 1
-+-- quan_ly_phong_tro_xampp_mysql.sql
-+-- docker-compose.yml
-+-- README.md
+```mermaid
+flowchart LR
+  Client["Client / k6"] --> Auth["Auth Service :3001"]
+  Client --> Room["Room Service :3002"]
+  Client --> Billing["Billing Service :3005"]
+  Client --> Report["Report Service :3003"]
+  Billing --> Calculator["Billing Calculator FastAPI :8000"]
+  Auth --> MySQL["MySQL / XAMPP"]
+  Room --> MySQL
+  Billing --> MySQL
+  Report --> MySQL
+  Room --> Redis["Redis Cache"]
+  Billing --> Redis
+  Report --> Redis
+  Prom["Prometheus :9090"] --> Auth
+  Prom --> Room
+  Prom --> Billing
+  Prom --> Calculator
+  Prom --> Report
+  Grafana["Grafana :3004"] --> Prom
 ```
 
-## Yeu cau truoc khi chay
+Service chính:
 
-- Node.js LTS
-- XAMPP, bat MySQL
-- Git
-- Docker Desktop neu muon chay Docker Compose
+| Service | Port | Trách nhiệm |
+| --- | --- | --- |
+| Auth Service | 3001 | Đăng ký, đăng nhập, JWT, user/role |
+| Room Service | 3002 | Phòng, người thuê, hợp đồng, trạng thái phòng |
+| Billing Service | 3005 | Hóa đơn, thanh toán, gọi billing calculator |
+| Billing Calculator | 8000 | FastAPI tính tiền điện/nước/dịch vụ |
+| Report Service | 3003 | Doanh thu tháng, hóa đơn chưa thanh toán, tỉ lệ phòng |
+| Frontend UI | 5173 | Giao diện React/Vite quản lý phòng trọ |
+| Redis | 6379 | Cache API đọc nhiều |
+| Prometheus | 9090 | Thu thập metrics |
+| Grafana | 3004 | Dashboard quan sát |
+| SonarQube | 9000 | Quality analysis |
 
-## Cai dat tren Windows voi XAMPP
+## Database MySQL / XAMPP
 
-1. Tai code ve may:
-
-```powershell
-git clone https://github.com/dungdao150L/Boarding-House-Management.git
-cd Boarding-House-Management
-```
-
-2. Cai thu vien backend:
-
-```powershell
-npm install
-```
-
-3. Cai thu vien frontend:
-
-```powershell
-cd giaodien
-npm install
-cd ..
-```
-
-4. Tao file moi truong:
-
-```powershell
-copy .env.example .env
-```
-
-5. Mo XAMPP va bat MySQL.
-
-6. Vao phpMyAdmin:
-
-```text
-http://localhost/phpmyadmin
-```
-
-Tao database:
-
-```sql
-quan_ly_phong_tro
-```
-
-Sau do import file:
+Backend Node.js hien da chuyen sang MySQL va dung schema trong file:
 
 ```text
 quan_ly_phong_tro_xampp_mysql.sql
 ```
 
-## Cau hinh `.env`
+Thong tin ket noi mac dinh trong `.env`:
 
-Mac dinh cho XAMPP:
-
-```env
+```text
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=quan_ly_phong_tro
 DB_USER=root
 DB_PASSWORD=
-JWT_SECRET=replace-this-secret
-REDIS_URL=redis://localhost:6379
 ```
 
-Neu MySQL cua ban co mat khau root, sua `DB_PASSWORD`.
+Neu MySQL XAMPP cua ban co mat khau, cap nhat lai `DB_PASSWORD`.
+Co the import file SQL bang phpMyAdmin, sau do chay `npm run seed` de dam bao tai khoan `admin / Admin@123` co password hash dung.
 
-## Chay project
+## Redis cache
 
-Chay toan bo backend services va frontend bang 1 lenh:
+Các dữ liệu được cache:
 
-```powershell
-npm run dev:all
+- `rooms:list`: danh sách phòng.
+- `report:revenue:<month>`: doanh thu tháng.
+- `report:unpaid-invoices`: hóa đơn chưa thanh toán.
+- `report:room-occupancy`: tỉ lệ phòng trống/đã thuê/bảo trì.
+
+Cache được xóa khi tạo/cập nhật/xóa phòng, tạo/kết thúc hợp đồng, tạo/cập nhật/thanh toán hóa đơn.
+
+## Chạy bằng Docker Compose
+
+```bash
+docker compose up --build
 ```
 
-Mo trinh duyet:
+Sau khi chạy:
+
+- Auth: `http://localhost:3001`
+- Room: `http://localhost:3002`
+- Billing: `http://localhost:3005`
+- Billing Calculator: `http://localhost:8000`
+- Report: `http://localhost:3003`
+- Frontend UI: `http://localhost:5173`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3004` với `admin/admin`
+- SonarQube: `http://localhost:9000`
+
+Seed admin:
 
 ```text
-http://localhost:5173
+username: admin
+password: Admin@123
 ```
 
-Ports mac dinh:
-
-| Thanh phan | Port |
-|---|---:|
-| Auth service | 3001 |
-| Room service | 3002 |
-| Report service | 3003 |
-| Billing service Node | 3005 |
-| Frontend Vite | 5173 |
-| FastAPI billing calculator | 8000 |
-| Prometheus | 9090 |
-| Grafana | 3004 |
-| SonarQube | 9000 |
-
-## Tai khoan mau
+Frontend UI đã được nối với backend thật qua các biến môi trường Vite:
 
 ```text
-Username: admin
-Password: Admin@123
-Role: admin
+VITE_AUTH_API_URL=http://localhost:3001
+VITE_ROOM_API_URL=http://localhost:3002
+VITE_BILLING_API_URL=http://localhost:3005
+VITE_REPORT_API_URL=http://localhost:3003
 ```
 
-Nguoi dung moi dang ky tren giao dien se co role `tenant`. Tenant can gui yeu cau chon phong, sau do admin phe duyet trong trang quan ly.
+Khi mở `http://localhost:5173`, đăng nhập bằng tài khoản seed `admin / Admin@123`. Giao diện sẽ gọi API thật, lưu JWT và tải dữ liệu phòng, người thuê, hợp đồng, hóa đơn từ MySQL thông qua các service backend.
 
-## Lenh huu ich
+## Chạy test
 
-```powershell
+```bash
+npm install
 npm run lint
-npm test -- --runInBand
 npm run test:unit
 npm run test:integration
+npm test
 npm run frontend:lint
 npm run frontend:build
 ```
 
-Coverage yeu cau Level 2-3: toi thieu 80%.
-
-## Chay bang Docker Compose
-
-```powershell
-copy .env.example .env
-docker compose up --build
-```
-
-Sau khi container chay:
-
-- Frontend: `http://localhost:5173`
-- Prometheus: `http://localhost:9090`
-- Grafana: `http://localhost:3004`
-- SonarQube: `http://localhost:9000`
-
-Grafana mac dinh:
+Kết quả kiểm tra hiện tại:
 
 ```text
-Username: admin
-Password: admin
+35 tests passed
+Statements 93.76%
+Branches 80.33%
+Functions 96.39%
+Lines 93.63%
 ```
 
-## API chinh
+## Chạy k6 load test
 
-Tat ca API tra ve JSON thong nhat:
+Cần hệ thống Docker Compose đang chạy và có dữ liệu hợp đồng mẫu.
 
-```json
-{
-  "success": true,
-  "message": "Message",
-  "data": {}
-}
+```bash
+k6 run load-tests/boarding-house.js
 ```
 
-### Auth
+Có thể truyền biến môi trường:
 
-| Method | Endpoint | Mo ta |
-|---|---|---|
-| POST | `/api/auth/register` | Dang ky tai khoan |
-| POST | `/api/auth/login` | Dang nhap, tra ve JWT |
-| GET | `/api/auth/me` | Lay user hien tai |
-| GET | `/api/auth/users` | Admin xem danh sach user |
-| POST | `/api/auth/users` | Admin tao user |
-
-### Rooms
-
-| Method | Endpoint | Mo ta |
-|---|---|---|
-| GET | `/api/rooms` | Danh sach phong |
-| POST | `/api/rooms` | Tao phong |
-| GET | `/api/rooms/:id` | Chi tiet phong |
-| PUT | `/api/rooms/:id` | Cap nhat phong |
-| DELETE | `/api/rooms/:id` | Xoa phong |
-| GET | `/api/rooms/available` | Tenant xem phong trong |
-| POST | `/api/rooms/rental-requests` | Tenant gui yeu cau thue phong |
-| GET | `/api/rooms/rental-requests` | Admin xem yeu cau thue |
-| PATCH | `/api/rooms/rental-requests/:id` | Admin duyet/tu choi yeu cau |
-
-### Tenants
-
-| Method | Endpoint | Mo ta |
-|---|---|---|
-| GET | `/api/tenants` | Danh sach nguoi thue |
-| POST | `/api/tenants` | Tao nguoi thue |
-| GET | `/api/tenants/:id` | Chi tiet nguoi thue |
-| PUT | `/api/tenants/:id` | Cap nhat nguoi thue |
-| DELETE | `/api/tenants/:id` | Xoa nguoi thue |
-
-### Contracts
-
-| Method | Endpoint | Mo ta |
-|---|---|---|
-| GET | `/api/contracts` | Danh sach hop dong |
-| POST | `/api/contracts` | Tao hop dong |
-| GET | `/api/contracts/:id` | Chi tiet hop dong |
-| PUT | `/api/contracts/:id` | Cap nhat hop dong |
-| PATCH | `/api/contracts/:id/end` | Ket thuc hop dong |
-
-### Invoices
-
-| Method | Endpoint | Mo ta |
-|---|---|---|
-| GET | `/api/invoices` | Danh sach hoa don |
-| POST | `/api/invoices` | Tao hoa don |
-| GET | `/api/invoices/:id` | Chi tiet hoa don |
-| PUT | `/api/invoices/:id` | Cap nhat hoa don |
-| PATCH | `/api/invoices/:id/payment-status` | Cap nhat thanh toan |
-
-### Tenant self-service
-
-| Method | Endpoint | Mo ta |
-|---|---|---|
-| GET | `/api/me/room` | Xem phong dang thue |
-| GET | `/api/me/contracts` | Xem hop dong cua minh |
-| GET | `/api/me/invoices` | Xem hoa don cua minh |
-| PATCH | `/api/me/invoices/:id/pay` | Tenant thanh toan hoa don |
-
-### Reports
-
-| Method | Endpoint | Mo ta |
-|---|---|---|
-| GET | `/api/reports/revenue?month=YYYY-MM` | Bao cao doanh thu |
-| GET | `/api/reports/unpaid-invoices` | Hoa don chua thanh toan |
-| GET | `/api/reports/room-occupancy` | Ti le phong |
-
-## Quy trinh SPQM
-
-Tai lieu chi tiet nam trong `docs/`:
-
-- `docs/spqm-level-1.md`
-- `docs/spqm-level-2.md`
-- `docs/spqm-level-3.md`
-- `docs/tong-hop-3-level.md`
-
-Tom tat quy trinh:
-
-```mermaid
-flowchart LR
-  A["Backlog"] --> B["Planning"]
-  B --> C["Development"]
-  C --> D["Pull Request"]
-  D --> E["Code Review"]
-  E --> F["CI: lint + test + coverage"]
-  F --> G["Merge"]
-  G --> H["Demo"]
-  H --> I["Retrospective + PDCA"]
+```bash
+k6 run ^
+  -e AUTH_URL=http://localhost:3001 ^
+  -e ROOM_URL=http://localhost:3002 ^
+  -e BILLING_URL=http://localhost:3005 ^
+  -e REPORT_URL=http://localhost:3003 ^
+  -e CONTRACT_ID=1 ^
+  load-tests/boarding-house.js
 ```
 
-Definition of Done:
+Chỉ số k6 cần ghi vào báo cáo:
 
-- Chuc nang dung yeu cau
-- Co validation va xu ly loi
-- Lint pass
-- Test pass
-- Coverage >= 80% voi Level 2-3
-- CI pass
-- README/API/docs duoc cap nhat neu co thay doi
+- Average response time.
+- p95 response time.
+- Requests per second.
+- Error rate.
+- So sánh trước/sau bật Redis.
 
-Commit convention:
+## Prometheus
+
+Mỗi service expose:
 
 ```text
-feat: them chuc nang moi
-fix: sua loi
-docs: cap nhat tai lieu
-test: them/sua test
-refactor: cai tien code khong doi hanh vi
-chore: cau hinh, build, package
+/metrics
 ```
 
-## Phan cong nhom
+Prometheus scrape config: [monitoring/prometheus.yml](/E:/doAn/monitoring/prometheus.yml)
 
-- Dung: backend Node.js, API, services, tests
-- Hoang: billing service, Docker, CI, SonarQube, monitoring, load test
-- Nam: frontend React/Vite, giao dien admin va user
+Mở Prometheus:
 
-## Luu y khi day GitHub
+```text
+http://localhost:9090
+```
 
-Khong day cac file sinh tu dong hoac file rieng may:
+Query mẫu:
 
-- `node_modules/`
-- `coverage/`
-- `.env`
-- `.codegraph/`
-- `dist/`
+```promql
+sum(rate(boarding_http_requests_total[5m])) by (service)
+histogram_quantile(0.95, sum(rate(boarding_http_request_duration_seconds_bucket[5m])) by (le, service))
+sum(rate(boarding_http_requests_total{status_code=~"5.."}[5m])) / sum(rate(boarding_http_requests_total[5m]))
+```
 
-Da co `.gitignore` cho cac muc tren. Khi clone ve may khac, chi can chay lai `npm install`.
+## Grafana
+
+Dashboard được provision tự động:
+
+[monitoring/grafana/dashboards/boarding-house-overview.json](/E:/doAn/monitoring/grafana/dashboards/boarding-house-overview.json)
+
+Mở Grafana:
+
+```text
+http://localhost:3004
+```
+
+Theo dõi:
+
+- Requests per second.
+- p95 response time.
+- Error rate.
+- Trạng thái service qua target Prometheus.
+
+## Quality Gate
+
+CI fail nếu:
+
+- ESLint fail.
+- Unit test fail.
+- Integration test fail.
+- Coverage dưới 80%.
+- SonarQube Quality Gate fail khi repo có `SONAR_TOKEN` và `SONAR_HOST_URL`.
+
+CI config: [.github/workflows/ci.yml](/E:/doAn/.github/workflows/ci.yml)
+
+Sonar config: [sonar-project.properties](/E:/doAn/sonar-project.properties)
+
+## Chỉ số Level 3
+
+SLO đề xuất:
+
+- 95% request có response time dưới 500ms.
+- Error rate dưới 1%.
+- CI pass rate trên 90%.
+- p95 API đọc có cache dưới 300ms.
+
+DORA metrics cần thu thập:
+
+- Deployment frequency.
+- Lead time for changes.
+- Change failure rate.
+- Mean time to recovery.
+
+## Link video demo
+
+Thêm link video demo sau khi quay:
+
+```text
+https://example.com/spqm-level-3-demo
+```
+
+## Báo cáo SPQM Level 3
+
+Xem: [docs/spqm-level-3.md](/E:/doAn/docs/spqm-level-3.md)
